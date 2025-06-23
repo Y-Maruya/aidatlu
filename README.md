@@ -85,7 +85,7 @@ Verify the installation:
 
 ```bash
 /opt/cactus/bin/controlhub_start
-./INSTALL/bin/aidatlu
+./INSTALL/bin/aidatluTool
 ```
 
 ---
