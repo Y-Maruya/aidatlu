@@ -11,42 +11,16 @@
 #include <thread>
 #include <chrono>
 
-void PWRLED::testme(){
-  std::cout << "TEST TEST TEST" << std::endl;
+
+AidaTluPowerModule::AidaTluPowerModule(){
+
 }
 
-PWRLED::PWRLED(){
-  //std::cout << "  AIDA_TLU POWERMODULE: Instantiated" << std::endl;
-  //std::vector<RGB_array> indicatorXYZ;
-  //std::array<RGB_array, 11> indicatorXYZ{{30, 29, 31}, {27, 26, 28}, {24, 23, 25}, {21, 20, 22}, {18, 17, 19}, {15, 14, 16}, {12, 11, 13}, {9, 8, 10}, {6, 5, 7}, {3, 2, 4}, {1, 0, -1}};
-}
-
-PWRLED::PWRLED( i2cCore  *mycore , char DACaddr, char Exp1Add, char Exp2Add, char IdAdd){
-  pwr_i2c_core = mycore;
-  pwr_i2c_DACaddr= DACaddr;
-  pwr_i2c_exp1Add= Exp1Add;
-  pwr_i2c_exp2Add= Exp2Add;
-  pwr_i2c_eeprom= IdAdd;
-  //std::cout << "  AIDA_TLU POWERMODULE: Instantiated" << std::endl;
-  if (IdAdd){
-    std::cout << "\tTYPE: new" << std::endl;
-    //std::cout << "\tI2C addr: 0x" << std::hex<< (int)IdAdd << std::dec << "(EEPROM)" << std::endl;
-    indicatorXYZ= { { { {30, 29, 31} }, { {27, 26, 28} }, { {24, 23, 25} }, { {21, 20, 22} }, { {18, 17, -1} }, { {15, 14, 16} },
-                      { {12, 11, 13} }, { {  9, 8, 10} }, { {   6, 5, 7} }, { {3, 2, 4} }, { {1, 0, 19} } } };
-  }
-  else{
-    std::cout << "\tTYPE: legacy (no eeprom and old LED map)" << std::endl;
-    indicatorXYZ= { { { {30, 29, 31} }, { {27, 26, 28} }, { {24, 23, 25} }, { {21, 20, 22} }, { {18, 17, 19} }, { {15, 14, 16} },
-                      { {12, 11, 13} }, { {  9, 8, 10} }, { {   6, 5, 7} }, { {3, 2, 4} }, { {1, 0, -1} } } };
-  }
-  return;
-}
-
-void PWRLED::initI2Cslaves(bool intRef, uint8_t verbose){
-  pwr_zeDAC.SetI2CPar(pwr_i2c_core, pwr_i2c_DACaddr);
+void AidaTluPowerModule::initI2Cslaves(bool intRef, uint8_t verbose){
+  pwr_zeDAC.SetI2CPar(pwr_i2c_core, m_pwr_i2c_DACaddr);
   pwr_zeDAC.SetIntRef(intRef, verbose);
-  pwr_ledExp1.SetI2CPar( pwr_i2c_core, pwr_i2c_exp1Add );
-  pwr_ledExp2.SetI2CPar( pwr_i2c_core, pwr_i2c_exp2Add );
+  pwr_ledExp1.SetI2CPar( pwr_i2c_core, m_pwr_i2c_exp1Add );
+  pwr_ledExp2.SetI2CPar( pwr_i2c_core, m_pwr_i2c_exp2Add );
 
   pwr_ledExp1.setInvertReg(0, 0x00, false);// 0= normal, 1= inverted
   pwr_ledExp1.setIOReg(0, 0x00, false);// 0= output, 1= input
@@ -65,7 +39,7 @@ void PWRLED::initI2Cslaves(bool intRef, uint8_t verbose){
   pwr_ledExp2.setOutputs(1, 0xFF, false);// If output, set to XX
 }
 
-uint32_t PWRLED::_set_bit(uint32_t v, int index, bool x){
+uint32_t AidaTluPowerModule::_set_bit(uint32_t v, int index, bool x){
   ///Set the index:th bit of v to 1 if x is truthy, else to 0, and return the new value
   uint32_t mask;
   if (index == -1){
@@ -81,11 +55,11 @@ uint32_t PWRLED::_set_bit(uint32_t v, int index, bool x){
   return v;
 }
 
-void PWRLED::setI2CPar( i2cCore  *mycore , char DACaddr, char Exp1Add, char Exp2Add, char IdAdd, uint8_t verbose){
+void AidaTluPowerModule::setI2CPar( i2cCore  *mycore , char DACaddr, char Exp1Add, char Exp2Add, char IdAdd, uint8_t verbose){
   pwr_i2c_core = mycore;
-  pwr_i2c_DACaddr= DACaddr;
-  pwr_i2c_exp1Add= Exp1Add;
-  pwr_i2c_exp2Add= Exp2Add;
+  m_pwr_i2c_DACaddr= DACaddr;
+  m_pwr_i2c_exp1Add= Exp1Add;
+  m_pwr_i2c_exp2Add= Exp2Add;
   if (IdAdd){
     std::cout << "\tTYPE: new" << std::endl;
     //std::cout << "\tI2C addr: 0x" << std::hex<< (int)IdAdd << std::dec << "(EEPROM)" << std::endl;
@@ -100,7 +74,7 @@ void PWRLED::setI2CPar( i2cCore  *mycore , char DACaddr, char Exp1Add, char Exp2
   return;
 }
 
-void PWRLED::setIndicatorRGB(int indicator, const std::array<int, 3>& RGB, uint8_t verbose){
+void AidaTluPowerModule::setIndicatorRGB(int indicator, const std::array<int, 3>& RGB, uint8_t verbose){
   // Indicator is one of the 11 LEDs on the front panels, labeled from 0 to 10
   // RGB allows to switch on (True) or off (False) the corresponding component for that Led
   // Note that one LED only has 2 components connected
@@ -112,7 +86,7 @@ void PWRLED::setIndicatorRGB(int indicator, const std::array<int, 3>& RGB, uint8
       nowStatus[1]= 0xFF & (pwr_ledExp1.getOutputs(1, verbose));
       nowStatus[2]= 0xFF & (pwr_ledExp2.getOutputs(0, verbose));
       nowStatus[3]= 0xFF & (pwr_ledExp2.getOutputs(1, verbose));
-      //std::cout << "NOW STATUS "<< (unsigned int)nowStatus[0] << " " << (unsigned int)nowStatus[1] << " " << (unsigned int)nowStatus[2] << " " << (unsigned int)nowStatus[3] << " " << std::endl;
+
       uint32_t nowWrd= 0x00000000;
       nowWrd= nowWrd | (unsigned int)nowStatus[0];
       nowWrd= nowWrd | ((unsigned int)nowStatus[1] << 8);
@@ -154,7 +128,7 @@ void PWRLED::setIndicatorRGB(int indicator, const std::array<int, 3>& RGB, uint8
   }
 }
 
-void PWRLED::setVchannel(int channel, float voltage, uint8_t verbose){
+void AidaTluPowerModule::setVchannel(int channel, float voltage, uint8_t verbose){
   // Note: the channel here is the DAC channel.
   // The mapping with the power module is not one-to-one
   float dacValue;
@@ -175,42 +149,42 @@ void PWRLED::setVchannel(int channel, float voltage, uint8_t verbose){
   }
 }
 
-void PWRLED::led_allBlue(){
+void AidaTluPowerModule::led_allBlue(){
   pwr_ledExp1.setOutputs(0, 111, false);
   pwr_ledExp1.setOutputs(1, 219, false);
   pwr_ledExp2.setOutputs(0, 182, false);
   pwr_ledExp2.setOutputs(1, 109, false);
 }
 
-void PWRLED::led_allGreen(){
+void AidaTluPowerModule::led_allGreen(){
   pwr_ledExp1.setOutputs(0, 218, false);
   pwr_ledExp1.setOutputs(1, 182, false);
   pwr_ledExp2.setOutputs(0, 109, false);
   pwr_ledExp2.setOutputs(1, 219, false);
 }
 
-void PWRLED::led_allRed(){
+void AidaTluPowerModule::led_allRed(){
   pwr_ledExp1.setOutputs(0, 181, false);
   pwr_ledExp1.setOutputs(1, 109, false);
   pwr_ledExp2.setOutputs(0, 219, false);
   pwr_ledExp2.setOutputs(1, 182, false);
 }
 
-void PWRLED::led_allOff(){
+void AidaTluPowerModule::led_allOff(){
   pwr_ledExp1.setOutputs(0, 255, false);
   pwr_ledExp1.setOutputs(1, 255, false);
   pwr_ledExp2.setOutputs(0, 255, false);
   pwr_ledExp2.setOutputs(1, 255, false);
 }
 
-void PWRLED::led_allWhite(){
+void AidaTluPowerModule::led_allWhite(){
   pwr_ledExp1.setOutputs(0, 0, false);
   pwr_ledExp1.setOutputs(1, 0, false);
   pwr_ledExp2.setOutputs(0, 0, false);
   pwr_ledExp2.setOutputs(1, 0, false);
 }
 
-void PWRLED::testLED(){
+void AidaTluPowerModule::testLED(){
   std::array<int, 3> RGB{{0, 1, 0}};
   led_allOff();
   for (int iInd=1; iInd < 12; iInd++){
