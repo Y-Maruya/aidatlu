@@ -1,4 +1,5 @@
 #include "AidaTluController.hh"
+#include "influxdb.h"
 
 #include <cstdio>
 #include <csignal>
@@ -11,7 +12,6 @@
 #include <thread>
 #include <regex>
 #include <future>
-
 
 #include <unistd.h>
 #include <getopt.h>
@@ -65,6 +65,10 @@ Usage:
   -dC [eudet|aida|aida_id] [with_busy|without_busy]        modes for dutC port (IO)
   -dD [eudet|aida|aida_id] [with_busy|without_busy]        modes for dutD port (IO)
 
+  -influx_url [url]     InfluxDB URL (e.g., http://localhost:8086)
+  -influx_db [name]     InfluxDB database name
+  -influx_measurement [name]  InfluxDB measurement name (default: tlu_trigger_rate)
+
 quick examples:
   aidatluTool -url ipbusudp-2.0://192.168.200.30:50001 -dA aida_id without_busy -hz 10 -print
   aidatluTool -url ipbusudp-2.0://192.168.200.30:50001 -dA aida_id without_busy -hz 1000
@@ -79,12 +83,20 @@ PMT contrl pin: 0.5v-1.1v, (opt. ~0.8v)
 
 )";
 
+struct InfluxConfig {
+    std::string url;
+    std::string database;
+    std::string measurement = "tlu_trigger_rate";
+    bool enabled = false;
+};
 
-
+static InfluxConfig g_influx_config;
 static sig_atomic_t g_done = 0;
 std::atomic<size_t> ga_unexpectedN = 0;
 std::atomic<size_t> ga_dataFrameN = 0;
 std::atomic<uint16_t>  ga_lastTriggerId = 0;
+
+static std::unique_ptr<InfluxDB> g_influx_client;
 
 uint64_t AsyncWatchDog(){
   auto tp_run_begin = std::chrono::system_clock::now();
@@ -107,6 +119,20 @@ uint64_t AsyncWatchDog(){
     double st_hz_pack_accu = st_dataFrameN / sec_accu;
     double st_hz_pack_period = (st_dataFrameN-st_old_dataFrameN) / sec_period;
 
+    if (g_influx_config.enabled && g_influx_client) {
+        try {
+            std::string dataPoint = g_influx_config.measurement + 
+                ",trigger_rate=" + std::to_string(st_hz_pack_period) +
+                ",last_trigger_id=" + std::to_string(st_lastTriggerId) +
+                ",total_triggers=" + std::to_string(st_dataFrameN);
+            
+            g_influx_client->AddDataPoint(dataPoint);
+            g_influx_client->WriteData(g_influx_config.database);
+            g_influx_client->ClearDataPointsBuffer();
+        } catch (const std::exception& e) {
+            std::fprintf(stderr, "InfluxDB write error: %s\n", e.what());
+        }
+    }
     tp_old = tp_now;
     st_old_dataFrameN= st_dataFrameN;
     st_old_unexpectedN = st_unexpectedN;
@@ -165,6 +191,10 @@ int main(int argc, char ** argv) {
      { "dB",       required_argument, NULL,         'I' },
      { "dC",       required_argument, NULL,         'J' },
      { "dD",       required_argument, NULL,         'K' },
+
+     { "influx_url",         required_argument, NULL,         'L' },
+     { "influx_db",          required_argument, NULL,         'M' },
+     { "influx_measurement", required_argument, NULL,         'N' },
      { 0, 0, 0, 0 }};
 
   uint32_t hz = 0;
@@ -296,6 +326,16 @@ int main(int argc, char ** argv) {
         }
       }
       break;
+    case 'L':
+      g_influx_config.url = optarg;
+      g_influx_config.enabled = true;
+      break;
+    case 'M':
+      g_influx_config.database = optarg;
+      break;
+    case 'N':
+      g_influx_config.measurement = optarg;
+      break;
     }
       ////////////////
     case 0: /* getopt_long() set a variable, just keep going */
@@ -349,6 +389,11 @@ int main(int argc, char ** argv) {
   std::printf("dut_clk[A,B,C,D]:      %#06x   %#06x   %#06x   %#06x\n", dut_clk[0], dut_clk[1], dut_clk[2], dut_clk[3]);
   std::printf("vpmt[A,B,C,D]:         %06f     %06f     %06f     %06f\n", vpmt[0], vpmt[1], vpmt[2], vpmt[3]);
   std::printf("vthresh[A,B,C,D,E,F]:  %06f     %06f     %06f     %06f     %06f     %06f\n", vthresh[0], vthresh[1], vthresh[2], vthresh[3], vthresh[4], vthresh[5]);
+  if (g_influx_config.enabled) {
+    std::printf("influx_url:            %s\n", g_influx_config.url.c_str());
+    std::printf("influx_db:             %s\n", g_influx_config.database.c_str());
+    std::printf("influx_measurement:    %s\n", g_influx_config.measurement.c_str());
+  }
   std::printf("\n--------------------------------------\n");
 
   tlu::AidaTluController TLU(url);
@@ -445,7 +490,32 @@ int main(int argc, char ** argv) {
   TLU.SetRunActive(1, 1);
   TLU.SetTriggerVeto(0, verbose);
   std::printf("Trigger output is enabled.\n");
-
+  
+  if (g_influx_config.enabled && !g_influx_config.url.empty() && !g_influx_config.database.empty()) {
+    try {
+      g_influx_client = std::make_unique<InfluxDB>(g_influx_config.url, false);
+      
+      // データベースが存在するかチェックし、なければ作成
+      g_influx_client->ShowDatabases();
+      auto dbList = g_influx_client->GetDatabaseList();
+      bool dbExists = false;
+      for (const auto& db : dbList) {
+        if (db == g_influx_config.database) {
+          dbExists = true;
+          break;
+        }
+      }
+      if (!dbExists) {
+        g_influx_client->CreateDatabase(g_influx_config.database);
+        std::printf("Created InfluxDB database: %s\n", g_influx_config.database.c_str());
+      }
+      
+      std::printf("InfluxDB client initialized: %s/%s\n", g_influx_config.url.c_str(), g_influx_config.database.c_str());
+    } catch (const std::exception& e) {
+      std::fprintf(stderr, "Failed to initialize InfluxDB client: %s\n", e.what());
+      g_influx_config.enabled = false;
+    }
+  }
   std::future<uint64_t> fut_async_watch;
   fut_async_watch = std::async(std::launch::async, &AsyncWatchDog);
 

@@ -23,6 +23,7 @@ endif()
 set(CMAKE_THREAD_PREFER_PTHREAD ON)
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
+find_package(CURL REQUIRED)
 
 if(BUILD_AIDATLU_STATIC)
   set(Boost_USE_STATIC_RUNTIME ON)
@@ -119,7 +120,7 @@ endif()
 
 aux_source_directory(src LIB_SRC)
 add_library(aidatlu STATIC ${LIB_SRC})
-target_link_libraries(aidatlu PRIVATE cactus)
+target_link_libraries(aidatlu PRIVATE cactus CURL::libcurl)
 target_include_directories(aidatlu
   PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -128,7 +129,7 @@ target_include_directories(aidatlu
   $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}>
   )
 
-set(LIB_PUBLIC_HEADERS include/AidaTluController.hh)
+set(LIB_PUBLIC_HEADERS include/AidaTluController.hh include/influxdb.h)
 set_target_properties(aidatlu PROPERTIES PUBLIC_HEADER "${LIB_PUBLIC_HEADERS}")
 
 #target_link_libraries(aidatlu PRIVATE -Wl,--whole-archive ${CACTUS_LIBRARIES} -Wl,--no-whole-archive)

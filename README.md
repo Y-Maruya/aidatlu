@@ -35,8 +35,17 @@ make clean
 make
 sudo make install
 ```
+## 2. Install cURL
+```bash
+# Ubuntu/Debian
+sudo apt-get install libcurl4-openssl-dev
 
-## 2. Set Environment Variables
+# CentOS/RHEL
+sudo yum install libcurl-devel
+# or
+sudo dnf install libcurl-devel
+```
+## 3. Set Environment Variables
 
 Add the following lines to your `~/.bashrc` or `~/.zshrc`:
 
@@ -51,7 +60,7 @@ Then source the shell configuration:
 source ~/.bashrc
 ```
 
-## 3. Clone and Build AIDATLU
+## 4. Clone and Build AIDATLU
 
 Clone the repository:
 
@@ -79,7 +88,7 @@ Build and install:
 make -j8 install
 ```
 
-## 4. Final Checks
+## 5. Final Checks
 
 Verify the installation:
 
